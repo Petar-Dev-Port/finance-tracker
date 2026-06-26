@@ -1,0 +1,36 @@
+name: Build and Deploy
+on:
+  push:
+    branches:
+      - main
+permissions:
+  contents: write
+  packages: write
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    - name: Log in to ghcr.io
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Build and push
+      run: |
+        IMAGE=ghcr.io/petar-dev-port/finance-tracker
+        docker build -t $IMAGE:${{ github.sha }} -t $IMAGE:latest .
+        docker push $IMAGE:${{ github.sha }}
+        docker push $IMAGE:latest
+    - name: Update image tag (GitOps commit-back)
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        sed -i "s|newTag: .*|newTag: ${{ github.sha }}|" deploy/base/kustomization.yaml
+        git add deploy/base/kustomization.yaml
+        git commit -m "ci: set finance image to ${{ github.sha }} [skip ci]" || echo "No change"
+        git push origin HEAD:main
